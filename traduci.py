@@ -22,7 +22,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from wikitradus import repo
-from wikitradus.cli import PrerequisiteError, check_prerequisites
+from wikitradus.cli import (
+    PrerequisiteError,
+    check_prerequisites,
+    check_tools,
+    create_api_assistant,
+    ensure_github_login,
+)
 from wikitradus.translate import LimitReached, process_group, read_group
 
 DEFAULT_WORKDIR = Path.home() / ".wikipedia-in-italiano"
@@ -129,16 +135,36 @@ def main():
         "--effort", choices=["none", "minimal", "low", "medium", "high", "xhigh"],
         help="profondita di ragionamento, solo per codex (default: low)",
     )
+    parser.add_argument(
+        "--api", action="store_true", default=False,
+        help="usa un'API OpenAI-compatible invece di Claude/Codex "
+             "(legge OPENAI_API_KEY, OPENAI_API_URL, OPENAI_MODEL da .env)",
+    )
     args = parser.parse_args()
 
     # 1. Prerequisiti: nessuna issue viene aperta prima che la CLI risponda.
-    try:
-        assistant = check_prerequisites(
-            assistant_selection(args), args.modello, args.effort
-        )
-    except PrerequisiteError as exc:
-        print(f"\n{exc}", file=sys.stderr)
-        return 1
+    using_api = args.api or (args.claude is None and args.codex is None)
+
+    if using_api:
+        try:
+            check_tools()
+        except PrerequisiteError as exc:
+            print(f"\n{exc}", file=sys.stderr)
+            return 1
+        try:
+            assistant = create_api_assistant()
+        except PrerequisiteError as exc:
+            print(f"\n{exc}", file=sys.stderr)
+            return 1
+        ensure_github_login()
+    else:
+        try:
+            assistant = check_prerequisites(
+                assistant_selection(args), args.modello, args.effort
+            )
+        except PrerequisiteError as exc:
+            print(f"\n{exc}", file=sys.stderr)
+            return 1
 
     fork = repo.ensure_fork()
     workdir = repo.ensure_clone(fork, args.workdir)

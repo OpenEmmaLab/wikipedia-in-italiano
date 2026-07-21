@@ -11,3 +11,6 @@ batches/
 
 # Estrazioni di prova, si rigenerano con wikitradus/extract.py
 example/
+
+# Configurazione locale del server LLM
+.env
