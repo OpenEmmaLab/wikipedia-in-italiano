@@ -28,7 +28,8 @@ Se non hai un account, registrati gratuitamente su
 
 Non serve configurare nulla a mano: al primo avvio lo script apre il browser per
 farti autorizzare l'accesso e ti chiede di incollare in console un codice che
-vedrai sulla pagina.
+vedrai sulla pagina. Senza questa autorizzazione lo script non può procedere e
+si ferma.
 
 ### 2. Claude Code oppure Codex
 
@@ -93,7 +94,10 @@ sopra. Poi lavorerà da solo:
 3. scarica il testo inglese di ogni voce e lo fa tradurre in italiano
    dall'assistente AI;
 4. salva le traduzioni e le carica sul tuo fork ogni 10 voci completate;
-5. alla fine apre una pull request e chiude la issue di prenotazione.
+5. alla fine apre una pull request e chiude la issue di prenotazione;
+6. ti propone di annunciare il contributo su LinkedIn e X. È facoltativo: se
+   accetti, apre il browser con il testo del post già pronto, che puoi rivedere
+   prima di pubblicarlo. Lo script non pubblica nulla al posto tuo.
 
 Il processo è interattivo: lascia il terminale aperto mentre lavora.
 
@@ -101,14 +105,16 @@ Il processo è interattivo: lascia il terminale aperto mentre lavora.
 
 Puoi chiudere tutto e rilanciare lo stesso comando più tardi. Il lavoro già
 fatto viene salvato su GitHub ogni 10 voci, quindi riprenderà da dove si era
-fermato senza ritradurre quello che è già pronto.
+fermato senza ritradurre quello che è già pronto: riconosce il gruppo su cui
+stavi lavorando e continua con quello, senza prenderne uno nuovo.
 
 ## Come sono organizzate le voci
 
 - [`groups/groups.txt`](groups/groups.txt) — l'indice: un gruppo per riga.
 - `groups/<nome>.txt` — le voci del gruppo, una per riga, nel formato
   `identificativo` + tabulazione + `titolo inglese`.
-- `translations/<nome>/` — le traduzioni prodotte, un file Markdown per voce.
+- `traduzioni/<nome>/` — le traduzioni prodotte, un file Markdown per voce,
+  nominato con l'identificativo numerico della pagina.
 
 Gli script [`create-wiki-batches.py`](create-wiki-batches.py) e
 [`grouping.py`](grouping.py) servono a rigenerare i gruppi dai dump di Wikipedia
