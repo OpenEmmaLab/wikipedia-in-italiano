@@ -10,7 +10,9 @@ AI e apre una pull request.
 
 ## Cosa ti serve
 
-Prima di iniziare devi avere quattro cose.
+Prima di iniziare devi avere quattro cose. Se ne manca qualcuna non è un
+problema: lo script se ne accorge al primo avvio e ti stampa i comandi da
+eseguire per il tuo sistema operativo.
 
 ### 1. Un account GitHub
 

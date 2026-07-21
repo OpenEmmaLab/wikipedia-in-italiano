@@ -13,6 +13,32 @@ PROBE_PROMPT = "Rispondi esattamente OK"
 PROBE_TIMEOUT = 120
 TRANSLATE_TIMEOUT = 900
 
+# Come installare ciò che manca. Gli id winget sono quelli della documentazione
+# ufficiale di Git e di GitHub CLI.
+INSTALL_HINTS = {
+    "git": {
+        "cosa": "il sistema di versionamento",
+        "Windows": "winget install --id Git.Git -e --source winget",
+        "macOS": "xcode-select --install",
+        "Linux": "sudo apt install git",
+        "url": "https://git-scm.com/install/windows",
+    },
+    "gh": {
+        "cosa": "la riga di comando di GitHub",
+        "Windows": "winget install --id GitHub.cli -e --source winget",
+        "macOS": "brew install gh",
+        "Linux": "sudo apt install gh",
+        "url": "https://cli.github.com",
+    },
+    "claude": {
+        "cosa": "un assistente da riga di comando (claude oppure codex)",
+        "Windows": "npm install -g @anthropic-ai/claude-code",
+        "macOS": "npm install -g @anthropic-ai/claude-code",
+        "Linux": "npm install -g @anthropic-ai/claude-code",
+        "url": "https://claude.com/claude-code  o  https://developers.openai.com/codex/cli",
+    },
+}
+
 
 class PrerequisiteError(Exception):
     """Un prerequisito non è soddisfatto: lo script non può proseguire."""
@@ -55,6 +81,39 @@ class Assistant:
         return any(line.strip().upper() == "OK" for line in answer.splitlines())
 
 
+def _install_hint(name):
+    """Come installare un comando mancante, sui tre sistemi operativi."""
+    hints = INSTALL_HINTS[name]
+    lines = [f"  {name}: {hints['cosa']}"]
+    for system in ("Windows", "macOS", "Linux"):
+        lines.append(f"      {system:<8} {hints[system]}")
+    if "url" in hints:
+        lines.append(f"      oppure  {hints['url']}")
+    return "\n".join(lines)
+
+
+def check_commands():
+    """Verifica che i comandi necessari siano nel PATH, prima di ogni altra cosa.
+
+    Un prerequisito mancante va scoperto subito e tutto insieme: scoprirne uno
+    per volta, dopo minuti di lavoro, è il modo peggiore di fallire.
+    """
+    missing = [name for name in ("git", "gh") if not shutil.which(name)]
+    if not any(shutil.which(name) for name, _ in ASSISTANTS):
+        missing.append("claude")
+
+    if not missing:
+        return
+
+    message = ["Mancano dei programmi necessari.\n"]
+    for name in missing:
+        message.append(_install_hint(name))
+    message.append(
+        "\nInstallali, riapri il terminale e rilancia lo script."
+    )
+    raise PrerequisiteError("\n".join(message))
+
+
 def find_assistant():
     """Trova claude o codex nel PATH e ne verifica l'autenticazione."""
     available = [
@@ -63,9 +122,7 @@ def find_assistant():
     ]
     if not available:
         raise PrerequisiteError(
-            "Serve 'claude' oppure 'codex' installato e raggiungibile nel PATH.\n"
-            "  Claude Code: https://claude.com/claude-code\n"
-            "  Codex:       https://developers.openai.com/codex/cli"
+            "Serve 'claude' oppure 'codex'.\n" + _install_hint("claude")
         )
 
     for assistant in available:
@@ -90,10 +147,6 @@ def find_assistant():
 
 def ensure_github_login():
     """Verifica il login a GitHub, avviandolo se manca. È bloccante."""
-    if not shutil.which("gh"):
-        raise PrerequisiteError(
-            "Serve la CLI di GitHub 'gh': https://cli.github.com"
-        )
     if _run(["gh", "auth", "status"], timeout=60).returncode == 0:
         return
 
@@ -110,7 +163,13 @@ def ensure_github_login():
 
 
 def check_prerequisites():
-    """Verifica tutto ciò che serve prima di prenotare un gruppo."""
+    """Verifica tutto ciò che serve prima di prenotare un gruppo.
+
+    Prima l'esistenza dei comandi, tutti insieme, poi le autenticazioni: un
+    programma mancante si scopre in un istante, autenticarsi richiede il
+    browser.
+    """
+    check_commands()
     assistant = find_assistant()
     ensure_github_login()
     return assistant
