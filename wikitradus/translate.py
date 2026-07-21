@@ -15,8 +15,8 @@ Traduci in italiano il testo markdown qui sotto.
 
 Usa un italiano idiomatico e naturale, come lo scriverebbe un madrelingua, non
 una traduzione letterale. Conserva la struttura markdown (intestazioni, elenchi,
-grassetti) e i link. Lascia in inglese i nomi propri che non hanno un esonimo
-italiano consolidato.
+grassetti). Lascia in inglese i nomi propri che non hanno un esonimo italiano
+consolidato. Non aggiungere link: il testo non ne contiene.
 
 Rispondi con la sola traduzione: nessun commento, nota o preambolo, e nessun
 blocco di codice attorno al risultato.

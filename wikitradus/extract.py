@@ -109,15 +109,15 @@ def _drop_final_sections(root):
             section.decompose()
 
 
-def _absolutise_links(root, lang):
-    """Rende assoluti i link interni, che l'endpoint restituisce come ./Titolo."""
-    base = f"https://{lang}.wikipedia.org/wiki/"
-    for anchor in root.find_all("a", href=True):
-        href = anchor["href"]
-        if href.startswith("./"):
-            anchor["href"] = base + href[2:]
-        elif href.startswith("//"):
-            anchor["href"] = "https:" + href
+def _unlink(root):
+    """Toglie tutti i link, interni ed esterni, conservandone il testo.
+
+    Un link non aggiunge nulla al testo da tradurre: quelli interni sono
+    relativi a Wikipedia e non risolvono altrove, quelli esterni portano fuori.
+    Si scarta l'ancora e si tiene la parola, così la prosa resta intatta.
+    """
+    for anchor in root.find_all("a"):
+        anchor.unwrap()
 
 
 def to_markdown(html, lang="en"):
@@ -131,7 +131,7 @@ def to_markdown(html, lang="en"):
         for element in root.select(selector):
             element.decompose()
     _drop_final_sections(root)
-    _absolutise_links(root, lang)
+    _unlink(root)
 
     markdown = markdownify(str(root), heading_style="ATX")
     # markdownify lascia lunghe sequenze di righe vuote dove sono stati tolti
