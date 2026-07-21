@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from wikitradus import repo
 from wikitradus.cli import PrerequisiteError, check_prerequisites
-from wikitradus.translate import extract_group, read_group, translate_group
+from wikitradus.translate import process_group, read_group
 
 DEFAULT_WORKDIR = Path.home() / ".wikipedia-in-italiano"
 POST_TEXT = "Ho contribuito a tradurre Wikipedia in italiano, il mio batch è {group}"
@@ -118,13 +118,9 @@ def main():
     entries = read_group(workdir.path / "groups" / f"{group}.txt")
     print(f"Il gruppo {group} contiene {len(entries)} voci.")
 
-    # 6. Estrazione di tutte le voci, poi commit in blocco.
-    if extract_group(workdir, group, entries, args.lingua):
-        if workdir.commit_all(f"estrazione: {group}, voci in inglese"):
-            workdir.push()
-
-    # 7. Traduzione voce per voce, con translated.txt e commit ogni 10.
-    translate_group(workdir, group, assistant, fork)
+    # 6-7. Ogni voce viene scaricata e subito tradotta, con translated.txt e
+    # commit ogni 10 traduzioni.
+    process_group(workdir, group, entries, assistant, args.lingua)
 
     # 8. Chiusura: PR, issue, ritorno su main. L'ordine conta.
     translated = len(workdir.translated_ids(group))

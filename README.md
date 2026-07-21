@@ -10,7 +10,9 @@ AI e apre una pull request.
 
 ## Cosa ti serve
 
-Prima di iniziare devi avere tre cose.
+Prima di iniziare devi avere quattro cose. Se ne manca qualcuna non è un
+problema: lo script se ne accorge al primo avvio e ti stampa i comandi da
+eseguire per il tuo sistema operativo.
 
 ### 1. Un account GitHub
 
@@ -27,7 +29,49 @@ farti autorizzare l'accesso e ti chiede di incollare in console un codice che
 vedrai sulla pagina. Senza questa autorizzazione lo script non può procedere e
 si ferma.
 
-### 2. Claude Code oppure Codex
+### 2. git e gh
+
+Lo script usa `git` per gestire il tuo lavoro e `gh` (la riga di comando di
+GitHub) per creare il fork, aprire la issue e proporre la pull request.
+
+**Windows** — apri PowerShell e incolla:
+
+```powershell
+winget install --id Git.Git -e --source winget
+winget install --id GitHub.cli -e --source winget
+```
+
+`winget` è il gestore di pacchetti di Windows: è già presente su Windows 11 e
+sulle versioni recenti di Windows 10. Se non ce l'hai, scarica gli installatori
+da [git-scm.com/install/windows](https://git-scm.com/install/windows) e
+[cli.github.com](https://cli.github.com).
+
+Chiudi e riapri il terminale al termine, altrimenti i comandi nuovi non vengono
+trovati.
+
+**macOS** — `git` di solito c'è già; per `gh` serve
+[Homebrew](https://brew.sh):
+
+```sh
+brew install gh
+```
+
+**Linux** — `git` è quasi sempre preinstallato; per `gh` segui le
+[istruzioni ufficiali](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)
+per la tua distribuzione. Su Debian e Ubuntu:
+
+```sh
+sudo apt install git gh
+```
+
+Verifica che siano raggiungibili:
+
+```sh
+git --version
+gh --version
+```
+
+### 3. Claude Code oppure Codex
 
 La traduzione vera e propria la fa un assistente AI da riga di comando. Devi
 averne installato **uno dei due**:
@@ -40,7 +84,7 @@ chiede di incollare il codice di autenticazione. Prima di iniziare a lavorare fa
 una domanda di prova all'assistente: se non risponde, si ferma senza prenotare
 nessun gruppo.
 
-### 3. uv
+### 4. uv
 
 `uv` è lo strumento che scarica ed esegue lo script Python con tutte le sue
 dipendenze, senza che tu debba installare niente a mano. Include il comando
