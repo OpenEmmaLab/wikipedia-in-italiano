@@ -36,8 +36,11 @@ def pick_group(workdir, requested=None):
 
     if requested:
         name = requested if requested.endswith(".txt") else f"{requested}.txt"
-        if name not in groups:
-            raise SystemExit(f"Il gruppo '{requested}' non esiste in groups.txt")
+        # Il gruppo richiesto si valida sul file, non sull'indice: i gruppi di
+        # prova test1..test9 esistono ma sono fuori da groups.txt, così non
+        # vengono mai estratti dalla scelta casuale.
+        if not (workdir.path / "groups" / name).exists():
+            raise SystemExit(f"Il gruppo '{requested}' non esiste in groups/")
         if repo.group_is_taken(name[:-4]):
             raise SystemExit(f"Il gruppo '{requested}' è già assegnato.")
         return name[:-4]

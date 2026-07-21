@@ -128,7 +128,7 @@ stavi lavorando e continua con quello, senza prenderne uno nuovo.
 - `groups/<nome>.txt` — le voci del gruppo, una per riga, nel formato
   `identificativo` + tabulazione + `titolo inglese`.
 - `groups/test1.txt` … `groups/test9.txt` — gruppi ridotti per le prove, da una
-  a nove voci.
+  a nove voci. Non compaiono nell'indice: si raggiungono solo con `--group`.
 - `traduzioni/<nome>/` — le traduzioni prodotte, un file Markdown per voce,
   nominato con l'identificativo numerico della pagina.
 - `traduzioni/<nome>/translated.txt` — l'elenco delle voci già tradotte, un
