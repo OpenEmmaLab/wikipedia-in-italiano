@@ -79,13 +79,11 @@ def _extract_one(destination, page_id, title, lang):
     return path
 
 
-def _translate_one(path, assistant, workdir):
+def _translate_one(path, assistant):
     """Traduce un file sul posto. False se la CLI non ha prodotto nulla."""
     before = path.read_text()
     try:
-        answer = assistant.ask(
-            TRANSLATE_PROMPT.format(text=before), cwd=workdir.path
-        )
+        answer = assistant.ask(TRANSLATE_PROMPT.format(text=before))
     except UsageLimitError as exc:
         raise LimitReached(
             f"'{assistant.name}' segnala che sono stati superati i limiti "
@@ -147,7 +145,7 @@ def process_group(workdir, group, entries, assistant, lang="en"):
             continue
 
         try:
-            translated_one = _translate_one(path, assistant, workdir)
+            translated_one = _translate_one(path, assistant)
         except LimitReached:
             if workdir.commit_all(f"traduzioni: {group}, stop per limiti"):
                 workdir.push()

@@ -2,6 +2,7 @@
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # Le due CLI supportate, con il modo di invocarle non interattivamente.
 ASSISTANTS = {
@@ -88,11 +89,17 @@ class Assistant:
         self.name = name
         self._build = config["ask"]
         self._auth = config["auth"]
+        # Le CLI caricano nel contesto i CLAUDE.md/AGENTS.md trovati nella
+        # directory di lavoro e nelle sue antenate: eseguirle nel clone, o
+        # dove è stato lanciato lo script, inietta in ogni chiamata istruzioni
+        # pensate per altri flussi. Il testo viaggia nel prompt e la risposta
+        # su stdout, nessun file serve: una directory vuota isola il contesto.
+        self._cwd = tempfile.mkdtemp(prefix="wikitradus-")
 
-    def ask(self, prompt, timeout=TRANSLATE_TIMEOUT, cwd=None):
+    def ask(self, prompt, timeout=TRANSLATE_TIMEOUT):
         result = subprocess.run(
             self._build(prompt), capture_output=True, text=True,
-            timeout=timeout, cwd=cwd, check=False,
+            timeout=timeout, cwd=self._cwd, check=False,
         )
         diagnostic = result.stderr
         if result.returncode != 0:
