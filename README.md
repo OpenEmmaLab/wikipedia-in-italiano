@@ -89,7 +89,15 @@ cd wikipedia-in-italiano
 Se preferisci lavorare su un gruppo preciso invece che su uno scelto a caso:
 
 ```sh
-./traduci.py --gruppo 0001-0
+./traduci.py --group 0001-0
+```
+
+Un gruppo vero contiene circa mille voci e la traduzione richiede parecchie ore.
+Per fare una prova ci sono nove gruppi ridotti, da `test1` a `test9`, con una
+voce per `test1` fino a nove per `test9`:
+
+```sh
+./traduci.py --group test1
 ```
 
 Al primo avvio lo script ti guiderà attraverso le autenticazioni descritte
@@ -119,6 +127,8 @@ stavi lavorando e continua con quello, senza prenderne uno nuovo.
 - [`groups/groups.txt`](groups/groups.txt) — l'indice: un gruppo per riga.
 - `groups/<nome>.txt` — le voci del gruppo, una per riga, nel formato
   `identificativo` + tabulazione + `titolo inglese`.
+- `groups/test1.txt` … `groups/test9.txt` — gruppi ridotti per le prove, da una
+  a nove voci.
 - `traduzioni/<nome>/` — le traduzioni prodotte, un file Markdown per voce,
   nominato con l'identificativo numerico della pagina.
 - `traduzioni/<nome>/translated.txt` — l'elenco delle voci già tradotte, un

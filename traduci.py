@@ -8,8 +8,9 @@
 Si prenota un gruppo di voci aprendo una issue sul repository, le estrae in
 markdown, le fa tradurre da `claude` o `codex` e apre una pull request.
 
-    ./traduci.py                    lavora su un gruppo scelto a caso
-    ./traduci.py --gruppo 0001-0    lavora su un gruppo specifico
+    ./traduci.py                   lavora su un gruppo scelto a caso
+    ./traduci.py --group 0001-0    lavora su un gruppo specifico
+    ./traduci.py --group test1     gruppo di prova: una voce sola
 """
 import argparse
 import random
@@ -70,7 +71,11 @@ def share(group):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--gruppo", help="lavora su un gruppo specifico")
+    parser.add_argument(
+        "--group", "--gruppo", dest="gruppo",
+        help="lavora su un gruppo specifico invece di sceglierlo a caso "
+             "(es. --group test1)",
+    )
     parser.add_argument(
         "--workdir", type=Path, default=DEFAULT_WORKDIR,
         help=f"dove tenere il clone (default: {DEFAULT_WORKDIR})",
