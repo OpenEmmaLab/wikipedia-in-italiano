@@ -4,7 +4,6 @@ Scarica l'HTML renderizzato dall'endpoint REST, isola il contenuto utile dal
 container `mw-parser-output`, rimuove tutto ciò che non è prosa dell'articolo e
 converte il resto in markdown.
 """
-import json
 import re
 import sys
 import urllib.parse
@@ -14,14 +13,10 @@ from bs4 import BeautifulSoup
 from markdownify import markdownify
 
 REST_URL = "https://{lang}.wikipedia.org/w/rest.php/v1/page/{title}/html"
-API_URL = "https://{lang}.wikipedia.org/w/api.php"
 USER_AGENT = (
     "wikipedia-in-italiano/0.1 "
     "(https://github.com/OpenEmmaLab/wikipedia-in-italiano)"
 )
-
-# Quanti page_id per interrogazione: è il limite dell'API per gli utenti anonimi.
-RESOLVE_BATCH = 50
 
 # Blocchi che non sono prosa dell'articolo e non vanno tradotti.
 # I selettori sono verificati sull'HTML reale delle voci del gruppo 0001-0.
@@ -64,30 +59,6 @@ def _get(url):
         if exc.code == 404:
             raise NotFound(url) from exc
         raise
-
-
-def resolve_titles(page_ids, lang="en"):
-    """Risolve i page_id nei titoli correnti, a blocchi di 50.
-
-    Il titolo nei file di gruppo può essere obsoleto mentre il page_id è
-    stabile: passando per l'id le voci rinominate vengono seguite invece di
-    andare perse. Le voci cancellate tornano marcate "missing" e sono assenti
-    dal risultato.
-    """
-    resolved = {}
-    for start in range(0, len(page_ids), RESOLVE_BATCH):
-        chunk = page_ids[start:start + RESOLVE_BATCH]
-        query = urllib.parse.urlencode({
-            "action": "query",
-            "pageids": "|".join(str(page_id) for page_id in chunk),
-            "format": "json",
-            "redirects": "1",
-        })
-        payload = json.loads(_get(f"{API_URL.format(lang=lang)}?{query}"))
-        for page_id, page in payload.get("query", {}).get("pages", {}).items():
-            if "missing" not in page and page.get("title"):
-                resolved[int(page_id)] = page["title"]
-    return resolved
 
 
 def fetch_html(title, lang="en"):

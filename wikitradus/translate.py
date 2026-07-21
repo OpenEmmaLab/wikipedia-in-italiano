@@ -4,7 +4,7 @@ import time
 import urllib.parse
 
 from . import repo
-from .extract import NotFound, fetch_html, resolve_titles, to_markdown
+from .extract import NotFound, fetch_html, to_markdown
 
 # Pausa fra le richieste a Wikipedia, per non martellare i loro server.
 FETCH_PAUSE = 0.2
@@ -62,19 +62,13 @@ def extract_group(workdir, group, entries, lang="en"):
         print(f"Le {len(entries)} voci del gruppo sono già estratte.")
         return 0
 
-    print(f"Risolvo i titoli correnti di {len(pending)} voci…", flush=True)
-    titles = resolve_titles([int(page_id) for page_id, _ in pending], lang)
-
     extracted = skipped = 0
-    for index, (page_id, original_title) in enumerate(pending, 1):
-        # Il titolo risolto segue le rinomine; se manca, la voce è cancellata.
-        title = titles.get(int(page_id))
-        if title is None:
-            skipped += 1
-            continue
+    for index, (page_id, title) in enumerate(pending, 1):
         try:
             markdown = to_markdown(fetch_html(title, lang), lang)
         except NotFound:
+            # La voce è stata cancellata o rinominata dopo la generazione dei
+            # batch: in entrambi i casi il titolo non risolve più e si salta.
             skipped += 1
             continue
         except Exception as exc:
