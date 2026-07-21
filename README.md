@@ -71,13 +71,16 @@ git --version
 gh --version
 ```
 
-### 3. Claude Code oppure Codex
+### 3. Claude Code, Codex oppure un server LLM locale
 
 La traduzione vera e propria la fa un assistente AI da riga di comando. Devi
-averne installato **uno dei due**:
+averne installato **uno tra**:
 
 - [Claude Code](https://claude.com/claude-code)
 - [Codex](https://developers.openai.com/codex/cli)
+- un server LLM locale compatibile con l'API di llama.cpp (es.
+  [llama.cpp](https://github.com/ggml-org/llama.cpp) o
+  [Ollama](https://ollama.com))
 
 Prima di iniziare a lavorare lo script fa una domanda di prova all'assistente in
 modalità non interattiva. Se non risponde, avvia il flusso di autenticazione
@@ -118,6 +121,25 @@ file di istruzioni della cartella da cui partono (`CLAUDE.md`, `AGENTS.md`) e il
 repository ne contiene uno: sono regole di sviluppo che non riguardano la
 traduzione e che finirebbero in ogni richiesta. Il testo da tradurre viaggia
 dentro la richiesta stessa, quindi alla CLI non serve vedere nessun file.
+
+#### Server LLM locale (llama.cpp / Ollama)
+
+Se hai un server LLM locale compatibile con l'API di llama.cpp (in esecuzione
+su `http://localhost:8080` di default), usa il flag `--llama` invece di
+Claude o Codex:
+
+```sh
+uv run traduci.py --llama
+```
+
+Per cambiare URL e porta, crea un file `.env` nella root del progetto:
+
+```sh
+echo LLAMA_BASE_URL=http://localhost:8080 > .env
+```
+
+Il server deve esporre l'endpoint `/v1/chat/completions` (OpenAI-compatible)
+oppure `/completion` (nativo llama.cpp).
 
 ### 4. uv
 

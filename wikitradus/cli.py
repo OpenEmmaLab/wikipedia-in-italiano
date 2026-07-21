@@ -1,8 +1,13 @@
 """Prerequisiti: la CLI di traduzione e l'autenticazione a GitHub."""
+import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
+from pathlib import Path
 
 # Le due CLI supportate, con il modo di invocarle non interattivamente.
 #
@@ -181,6 +186,96 @@ class Assistant:
     def authenticate(self):
         """Avvia solo il flusso auth browser/device, senza aprire la UI."""
         subprocess.run(self._auth, check=False)
+
+
+class LocalAssistant:
+    """Assistant che parla con un server LLM locale via HTTP (es. llama.cpp)."""
+
+    def __init__(self, name, config):
+        self.name = name
+        self._base_url = config["base_url"].rstrip("/")
+
+    def ask(self, prompt, timeout=TRANSLATE_TIMEOUT, cwd=None):
+        payload = {
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self._base_url}/v1/chat/completions",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                return result["choices"][0]["message"]["content"].strip()
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise RuntimeError(f"llama.cpp: {exc}")
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"llama.cpp: {exc.reason}")
+
+        # Fall back to native /completion endpoint
+        payload = {"prompt": prompt, "temperature": 0}
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self._base_url}/completion",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                return result["content"].strip()
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+            raise RuntimeError(
+                f"llama.cpp: nessun endpoint valido su {self._base_url}"
+            )
+
+    def probe(self):
+        try:
+            answer = self.ask(PROBE_PROMPT, timeout=PROBE_TIMEOUT)
+        except Exception:
+            return False
+        return any(line.strip().upper() == "OK" for line in answer.splitlines())
+
+
+def _load_env():
+    """Legge .env dalla root del progetto e dalla CWD (se diversa)."""
+    root = Path(__file__).resolve().parent.parent / ".env"
+    if root.exists():
+        _parse_env(root.read_text())
+    cwd = Path.cwd() / ".env"
+    if cwd.exists() and cwd.resolve() != root.resolve():
+        _parse_env(cwd.read_text())
+
+
+def _parse_env(content):
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+def create_local_assistant():
+    """Crea un assistant locale verificando che il server sia raggiungibile."""
+    _load_env()
+    base_url = os.environ.get("LLAMA_BASE_URL", "http://localhost:8080")
+    assistant = LocalAssistant("llama", {"base_url": base_url})
+    print(f"Verifico che il server LLM locale ({base_url}) risponda…", flush=True)
+    if not assistant.probe():
+        raise PrerequisiteError(
+            f"Server LLM locale non raggiungibile a {base_url}.\n"
+            "Verifica che llama.cpp sia in esecuzione e che LLAMA_BASE_URL\n"
+            "in .env sia corretto."
+        )
+    print(f"  Server LLM locale pronto ({base_url}).")
+    return assistant
 
 
 def _install_hint(name):
