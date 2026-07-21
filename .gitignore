@@ -9,5 +9,5 @@ __pycache__/
 # Output generato: centinaia di MB, si rigenera dai dump
 batches/
 
-# Estrazioni di prova, si rigenerano con extract.py
+# Estrazioni di prova, si rigenerano con wikitradus/extract.py
 example/

@@ -8,10 +8,6 @@ alcune centinaia di pagine inglesi che non hanno ancora una versione italiana.
 Chi contribuisce si prenota un gruppo, lo traduce con l'aiuto di un assistente
 AI e apre una pull request.
 
-> **Nota:** lo script di traduzione è in fase di sviluppo — vedi
-> [issue #3](https://github.com/OpenEmmaLab/wikipedia-in-italiano/issues/3).
-> I comandi di questa guida saranno operativi quando lo script sarà pubblicato.
-
 ## Cosa ti serve
 
 Prima di iniziare devi avere tre cose.
@@ -83,19 +79,27 @@ Se il comando non viene trovato, consulta la
 Apri il terminale (su Windows: PowerShell) ed esegui:
 
 ```sh
-uvx --from git+https://github.com/OpenEmmaLab/wikipedia-in-italiano translate
+git clone https://github.com/OpenEmmaLab/wikipedia-in-italiano.git
+cd wikipedia-in-italiano
+./traduci.py
 ```
 
-Non serve scaricare il repository prima: `uvx` fa tutto da solo.
+`uv` scarica da solo le librerie che servono: non devi installare nulla a mano.
+
+Se preferisci lavorare su un gruppo preciso invece che su uno scelto a caso:
+
+```sh
+./traduci.py --gruppo 0001-0
+```
 
 Al primo avvio lo script ti guiderà attraverso le autenticazioni descritte
 sopra. Poi lavorerà da solo:
 
-1. crea (o aggiorna) il tuo fork del repository;
+1. crea il tuo fork del repository e lo clona in `~/.wikipedia-in-italiano`;
 2. sceglie a caso un gruppo di voci ancora libero e lo prenota aprendo una issue;
-3. scarica il testo inglese di ogni voce e lo fa tradurre in italiano
-   dall'assistente AI;
-4. salva le traduzioni e le carica sul tuo fork ogni 10 voci completate;
+3. scarica tutte le voci del gruppo, le converte in markdown e le pubblica sul
+   tuo fork: a questo punto sono ancora in inglese;
+4. le fa tradurre una a una dall'assistente AI, caricandole ogni 10 voci;
 5. alla fine apre una pull request e chiude la issue di prenotazione;
 6. ti propone di annunciare il contributo su LinkedIn e X. È facoltativo: se
    accetti, apre il browser con il testo del post già pronto, che puoi rivedere
@@ -117,6 +121,22 @@ stavi lavorando e continua con quello, senza prenderne uno nuovo.
   `identificativo` + tabulazione + `titolo inglese`.
 - `traduzioni/<nome>/` — le traduzioni prodotte, un file Markdown per voce,
   nominato con l'identificativo numerico della pagina.
+- `traduzioni/<nome>/translated.txt` — l'elenco delle voci già tradotte, un
+  identificativo per riga. È quello che permette allo script di riprendere il
+  lavoro senza rifare quanto è già pronto.
+
+## Il codice
+
+- [`traduci.py`](traduci.py) — lo script da lanciare, con il flusso completo.
+- [`wikitradus/extract.py`](wikitradus/extract.py) — scarica una voce da
+  Wikipedia e la converte in markdown, scartando quel che non è prosa
+  dell'articolo (infobox, avvisi, navigazione, bibliografia, immagini).
+- [`wikitradus/translate.py`](wikitradus/translate.py) — le due fasi:
+  estrazione di tutte le voci del gruppo, poi traduzione una a una.
+- [`wikitradus/cli.py`](wikitradus/cli.py) — verifica che `claude` o `codex`
+  rispondano davvero, e che tu sia autenticato su GitHub.
+- [`wikitradus/repo.py`](wikitradus/repo.py) — fork, clone, branch, issue e
+  pull request.
 
 Gli script [`create-wiki-batches.py`](create-wiki-batches.py) e
 [`grouping.py`](grouping.py) servono a rigenerare i gruppi dai dump di Wikipedia
