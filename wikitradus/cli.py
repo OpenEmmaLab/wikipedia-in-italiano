@@ -188,23 +188,29 @@ class Assistant:
         subprocess.run(self._auth, check=False)
 
 
-class LocalAssistant:
-    """Assistant che parla con un server LLM locale via HTTP (es. llama.cpp)."""
+class OpenAIAssistant:
+    """Assistant che parla con un'API OpenAI-compatible via HTTP."""
 
     def __init__(self, name, config):
         self.name = name
         self._base_url = config["base_url"].rstrip("/")
+        self._api_key = config["api_key"]
+        self._model = config["model"]
 
     def ask(self, prompt, timeout=TRANSLATE_TIMEOUT, cwd=None):
         payload = {
+            "model": self._model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
         }
         data = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
         req = urllib.request.Request(
-            f"{self._base_url}/v1/chat/completions",
+            f"{self._base_url}/chat/completions",
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         try:
@@ -212,28 +218,9 @@ class LocalAssistant:
                 result = json.loads(resp.read().decode("utf-8"))
                 return result["choices"][0]["message"]["content"].strip()
         except urllib.error.HTTPError as exc:
-            if exc.code != 404:
-                raise RuntimeError(f"llama.cpp: {exc}")
+            raise RuntimeError(f"API: {exc.code} {exc.reason}")
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"llama.cpp: {exc.reason}")
-
-        # Fall back to native /completion endpoint
-        payload = {"prompt": prompt, "temperature": 0}
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self._base_url}/completion",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                return result["content"].strip()
-        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
-            raise RuntimeError(
-                f"llama.cpp: nessun endpoint valido su {self._base_url}"
-            )
+            raise RuntimeError(f"API: {exc.reason}")
 
     def probe(self):
         try:
@@ -262,20 +249,46 @@ def _parse_env(content):
         os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
 
-def create_local_assistant():
-    """Crea un assistant locale verificando che il server sia raggiungibile."""
+def create_api_assistant():
+    """Crea un assistant basato su API OpenAI-compatible."""
     _load_env()
-    base_url = os.environ.get("LLAMA_BASE_URL", "http://localhost:8080")
-    assistant = LocalAssistant("llama", {"base_url": base_url})
-    print(f"Verifico che il server LLM locale ({base_url}) risponda…", flush=True)
+    base_url = os.environ.get("OPENAI_API_URL", "https://api.openai.com/v1").rstrip("/")
+    api_key = os.environ.get("OPENAI_API_KEY")
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    if not api_key:
+        raise PrerequisiteError(
+            "OPENAI_API_KEY non impostata in .env.\n"
+            "Crea un file .env nella directory del progetto con:\n"
+            "  OPENAI_API_KEY=sk-...\n"
+            "  OPENAI_API_URL=https://api.openai.com/v1  (opzionale)\n"
+            "  OPENAI_MODEL=gpt-4o-mini                     (opzionale)"
+        )
+    assistant = OpenAIAssistant("api", {
+        "base_url": base_url,
+        "api_key": api_key,
+        "model": model,
+    })
+    print(f"Verifico che l'API ({model} @ {base_url}) risponda…", flush=True)
     if not assistant.probe():
         raise PrerequisiteError(
-            f"Server LLM locale non raggiungibile a {base_url}.\n"
-            "Verifica che llama.cpp sia in esecuzione e che LLAMA_BASE_URL\n"
-            "in .env sia corretto."
+            f"API non raggiungibile a {base_url}.\n"
+            "Verifica OPENAI_API_URL e OPENAI_API_KEY in .env."
         )
-    print(f"  Server LLM locale pronto ({base_url}).")
+    print(f"  API pronta ({model}).")
     return assistant
+
+
+def check_tools():
+    """Verifica che git e gh siano presenti (senza assistant)."""
+    missing = [name for name in ("git", "gh") if not shutil.which(name)]
+    if missing:
+        message = ["Mancano dei programmi necessari.\n"]
+        for name in missing:
+            message.append(_install_hint(name))
+        message.append(
+            "\nInstallali, riapri il terminale e rilancia lo script."
+        )
+        raise PrerequisiteError("\n".join(message))
 
 
 def _install_hint(name):
@@ -314,7 +327,8 @@ def check_commands(selection=None):
     enabled = _enabled_assistant_names(selection)
     if not enabled:
         raise PrerequisiteError(
-            "Devi abilitare almeno un assistente: usa --claude o --codex."
+            "Devi abilitare almeno un assistente con --claude/--codex,\n"
+            "oppure usa --api per un'API OpenAI-compatible."
         )
 
     missing = [name for name in ("git", "gh") if not shutil.which(name)]

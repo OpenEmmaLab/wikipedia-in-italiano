@@ -25,7 +25,8 @@ from wikitradus import repo
 from wikitradus.cli import (
     PrerequisiteError,
     check_prerequisites,
-    create_local_assistant,
+    check_tools,
+    create_api_assistant,
     ensure_github_login,
 )
 from wikitradus.translate import LimitReached, process_group, read_group
@@ -135,16 +136,23 @@ def main():
         help="profondita di ragionamento, solo per codex (default: low)",
     )
     parser.add_argument(
-        "--llama", action="store_true", default=False,
-        help="usa un server LLM locale (es. llama.cpp) al posto di "
-             "Claude/Codex",
+        "--api", action="store_true", default=False,
+        help="usa un'API OpenAI-compatible invece di Claude/Codex "
+             "(legge OPENAI_API_KEY, OPENAI_API_URL, OPENAI_MODEL da .env)",
     )
     args = parser.parse_args()
 
     # 1. Prerequisiti: nessuna issue viene aperta prima che la CLI risponda.
-    if args.llama:
+    using_api = args.api or (args.claude is None and args.codex is None)
+
+    if using_api:
         try:
-            assistant = create_local_assistant()
+            check_tools()
+        except PrerequisiteError as exc:
+            print(f"\n{exc}", file=sys.stderr)
+            return 1
+        try:
+            assistant = create_api_assistant()
         except PrerequisiteError as exc:
             print(f"\n{exc}", file=sys.stderr)
             return 1
