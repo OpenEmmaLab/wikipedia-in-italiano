@@ -40,7 +40,9 @@ averne installato **uno dei due**:
 - [Codex](https://developers.openai.com/codex/cli)
 
 Anche qui, se non hai ancora fatto il login, lo script apre il browser e ti
-chiede di incollare il codice di autenticazione.
+chiede di incollare il codice di autenticazione. Prima di iniziare a lavorare
+prova a tradurre una frase di esempio: se l'assistente non risponde, si ferma
+senza prenotare nessun gruppo.
 
 ### 3. uv
 
