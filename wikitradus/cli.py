@@ -2,16 +2,37 @@
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # Le due CLI supportate, con il modo di invocarle non interattivamente.
+#
+# I default sono del progetto, non della macchina: senza di essi le traduzioni
+# girerebbero su quanto ciascuno ha in ~/.codex/config.toml, e la stessa voce
+# verrebbe tradotta da modelli diversi a seconda di chi lancia lo script.
+# Si sceglie il modello piu leggero di ogni famiglia con reasoning minimo:
+# tradurre markdown non richiede un modello di frontiera.
+#
+# 'claude' non ha un flag di reasoning effort: l'argomento si ignora, non e'
+# una dimenticanza da correggere.
 ASSISTANTS = {
     "claude": {
-        "ask": lambda prompt: ["claude", "-p", prompt],
+        "ask": lambda prompt, model, effort: [
+            "claude", "-p", "--model", model, prompt
+        ],
         "auth": ["claude", "auth", "login"],
+        "model": "claude-haiku-4-5",
+        "effort": "low",
     },
     "codex": {
-        "ask": lambda prompt: ["codex", "exec", prompt],
+        "ask": lambda prompt, model, effort: [
+            "codex", "exec",
+            "-m", model,
+            "-c", f"model_reasoning_effort={effort}",
+            prompt,
+        ],
         "auth": ["codex", "login", "--device-auth"],
+        "model": "gpt-5.4-mini",
+        "effort": "low",
     },
 }
 
@@ -52,6 +73,17 @@ INSTALL_HINTS = {
     },
 }
 
+# Come le CLI segnalano un modello o un effort che non conoscono. Verificati sul
+# campo: 'codex' risponde con un 400 dell'API o con un errore di parsing del
+# config, 'claude' con una frase in inglese.
+BAD_MODEL_MESSAGES = (
+    "model is not supported",
+    "unknown variant",
+    "issue with the selected model",
+    "may not exist or you may not have access",
+    "invalid_request_error",
+)
+
 LIMIT_MESSAGES = (
     "rate limit",
     "rate_limit",
@@ -84,26 +116,42 @@ def _run(command, timeout):
 class Assistant:
     """La CLI che esegue le traduzioni: `claude` oppure `codex`."""
 
-    def __init__(self, name, config):
+    def __init__(self, name, config, model=None, effort=None):
         self.name = name
         self._build = config["ask"]
         self._auth = config["auth"]
+        # None significa "usa il default del progetto", non "usa quello della
+        # macchina": si scavalca solo con un valore esplicito.
+        self.model = model or config["model"]
+        self.effort = effort or config["effort"]
 
-    def ask(self, prompt, timeout=TRANSLATE_TIMEOUT, cwd=None):
-        result = subprocess.run(
-            self._build(prompt), capture_output=True, text=True,
-            timeout=timeout, cwd=cwd, check=False,
-        )
-        diagnostic = result.stderr
-        if result.returncode != 0:
-            diagnostic = "\n".join(
-                part for part in (result.stdout, result.stderr) if part
+    def ask(self, prompt, timeout=TRANSLATE_TIMEOUT):
+        """Interroga la CLI da una directory vuota.
+
+        Entrambe le CLI leggono i file di istruzioni della directory da cui
+        partono - `CLAUDE.md`, `AGENTS.md` - e il clone ne contiene uno, con le
+        regole di questo repository. Sono istruzioni che non riguardano la
+        traduzione: finirebbero in ogni prompt, occuperebbero contesto e
+        potrebbero spingere la CLI a fare altro. Il testo da tradurre viaggia
+        già dentro il prompt, quindi la traduzione non ha bisogno di vedere
+        nessun file: si esegue in una directory vuota.
+        """
+        with tempfile.TemporaryDirectory(prefix="wikitradus-") as empty:
+            result = subprocess.run(
+                self._build(prompt, self.model, self.effort),
+                capture_output=True, text=True,
+                timeout=timeout, cwd=empty, check=False,
             )
-        if _looks_like_usage_limit(diagnostic):
-            raise UsageLimitError(diagnostic.strip())
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or "la CLI ha fallito")
-        return result.stdout.strip()
+            diagnostic = result.stderr
+            if result.returncode != 0:
+                diagnostic = "\n".join(
+                    part for part in (result.stdout, result.stderr) if part
+                )
+            if _looks_like_usage_limit(diagnostic):
+                raise UsageLimitError(diagnostic.strip())
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or "la CLI ha fallito")
+            return result.stdout.strip()
 
     def probe(self):
         """Verifica che la CLI risponda davvero, non solo che esista.
@@ -112,10 +160,21 @@ class Assistant:
         presente: una sessione può essere scaduta. `codex` intercala righe di
         servizio nell'output, quindi si cerca OK fra le righe invece di
         pretendere una corrispondenza esatta.
+
+        Un modello o un effort che la CLI non riconosce si distingue qui: non è
+        una sessione scaduta e rilanciare l'autenticazione non lo aggiusta, così
+        l'errore si propaga invece di diventare un `False` fuorviante.
         """
         try:
             answer = self.ask(PROBE_PROMPT, timeout=PROBE_TIMEOUT)
-        except (subprocess.TimeoutExpired, RuntimeError):
+        except (subprocess.TimeoutExpired, RuntimeError) as exc:
+            if _looks_like_bad_model(str(exc)):
+                raise PrerequisiteError(
+                    f"'{self.name}' non accetta il modello '{self.model}' o "
+                    f"l'effort '{self.effort}':\n\n{exc}\n\n"
+                    "Controlla i valori passati a --modello e --effort. "
+                    "I modelli disponibili si elencano con 'codex debug models'."
+                ) from exc
             return False
         return any(line.strip().upper() == "OK" for line in answer.splitlines())
 
@@ -138,6 +197,11 @@ def _install_hint(name):
 def _looks_like_usage_limit(text):
     lowered = text.lower()
     return any(message in lowered for message in LIMIT_MESSAGES)
+
+
+def _looks_like_bad_model(text):
+    lowered = text.lower()
+    return any(message in lowered for message in BAD_MODEL_MESSAGES)
 
 
 def _enabled_assistant_names(selection=None):
@@ -175,11 +239,12 @@ def check_commands(selection=None):
     raise PrerequisiteError("\n".join(message))
 
 
-def find_assistant(selection=None):
+def find_assistant(selection=None, model=None, effort=None):
     """Trova claude o codex nel PATH e ne verifica l'autenticazione."""
     enabled = _enabled_assistant_names(selection)
     available = [
-        Assistant(name, ASSISTANTS[name]) for name in enabled if shutil.which(name)
+        Assistant(name, ASSISTANTS[name], model, effort)
+        for name in enabled if shutil.which(name)
     ]
     if not available:
         raise PrerequisiteError(
@@ -189,7 +254,7 @@ def find_assistant(selection=None):
     for assistant in available:
         print(f"Verifico che '{assistant.name}' risponda…", flush=True)
         if assistant.probe():
-            print(f"  '{assistant.name}' pronto.")
+            print(f"  '{assistant.name}' pronto, modello '{assistant.model}'.")
             return assistant
         print(
             f"  '{assistant.name}' non risponde: avvio il flusso di "
@@ -198,7 +263,7 @@ def find_assistant(selection=None):
         )
         assistant.authenticate()
         if assistant.probe():
-            print(f"  '{assistant.name}' pronto.")
+            print(f"  '{assistant.name}' pronto, modello '{assistant.model}'.")
             return assistant
 
     raise PrerequisiteError(
@@ -225,7 +290,7 @@ def ensure_github_login():
         )
 
 
-def check_prerequisites(selection=None):
+def check_prerequisites(selection=None, model=None, effort=None):
     """Verifica tutto ciò che serve prima di prenotare un gruppo.
 
     Prima l'esistenza dei comandi, tutti insieme, poi le autenticazioni: un
@@ -233,6 +298,6 @@ def check_prerequisites(selection=None):
     browser.
     """
     check_commands(selection)
-    assistant = find_assistant(selection)
+    assistant = find_assistant(selection, model, effort)
     ensure_github_login()
     return assistant

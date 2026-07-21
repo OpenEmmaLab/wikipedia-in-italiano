@@ -120,11 +120,22 @@ def main():
         "--codex", nargs="?", const=True, default=None, type=assistant_flag,
         help="usa Codex, o disabilitalo con --codex 0",
     )
+    parser.add_argument(
+        "--modello", "--model", dest="modello",
+        help="scavalca il modello scelto dal progetto "
+             "(default: gpt-5.4-mini per codex, claude-haiku-4-5 per claude)",
+    )
+    parser.add_argument(
+        "--effort", choices=["none", "minimal", "low", "medium", "high", "xhigh"],
+        help="profondita di ragionamento, solo per codex (default: low)",
+    )
     args = parser.parse_args()
 
     # 1. Prerequisiti: nessuna issue viene aperta prima che la CLI risponda.
     try:
-        assistant = check_prerequisites(assistant_selection(args))
+        assistant = check_prerequisites(
+            assistant_selection(args), args.modello, args.effort
+        )
     except PrerequisiteError as exc:
         print(f"\n{exc}", file=sys.stderr)
         return 1
@@ -152,8 +163,8 @@ def main():
     entries = read_group(workdir.path / "groups" / f"{group}.txt")
     print(f"Il gruppo {group} contiene {len(entries)} voci.")
 
-    # 6-7. Ogni voce viene scaricata e subito tradotta, con translated.txt e
-    # commit ogni 10 traduzioni.
+    # 6-7. Le voci si scaricano e si traducono a lotti, con translated.txt
+    # aggiornato per voce e un commit alla fine di ogni lotto.
     try:
         process_group(workdir, group, entries, assistant, args.lingua)
     except LimitReached as exc:

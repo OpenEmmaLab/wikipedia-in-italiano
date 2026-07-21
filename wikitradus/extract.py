@@ -51,7 +51,16 @@ class NotFound(Exception):
 
 
 class RateLimited(Exception):
-    """Wikipedia ha risposto che il limite di richieste è stato superato."""
+    """Wikipedia ha risposto che il limite di richieste è stato superato.
+
+    `retry_after` sono i secondi che il server chiede di aspettare, se li ha
+    indicati: è la sua stessa indicazione di quando riprovare, quindi vale più
+    di qualunque attesa scelta da noi.
+    """
+
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 def _get(url):
@@ -63,11 +72,12 @@ def _get(url):
         if exc.code == 404:
             raise NotFound(url) from exc
         if exc.code == 429:
-            retry_after = exc.headers.get("Retry-After")
-            message = url
-            if retry_after:
-                message = f"{url} (Retry-After: {retry_after})"
-            raise RateLimited(message) from exc
+            header = exc.headers.get("Retry-After")
+            # Retry-After puo' essere un numero di secondi o una data HTTP:
+            # si usa solo la forma numerica, l'altra si ignora senza rompere.
+            seconds = int(header) if header and header.isdigit() else None
+            message = f"{url} (Retry-After: {header})" if header else url
+            raise RateLimited(message, seconds) from exc
         raise
 
 

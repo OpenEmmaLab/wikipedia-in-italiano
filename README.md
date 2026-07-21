@@ -96,6 +96,29 @@ esplicitamente una CLI. Per esempio, per usare solo Codex:
 uv run traduci.py --codex
 ```
 
+#### Quale modello viene usato
+
+Il modello lo sceglie il progetto, non la tua configurazione locale: `gpt-5.4-mini`
+per Codex e `claude-haiku-4-5` per Claude Code, entrambi con ragionamento `low`.
+Tradurre markdown non richiede un modello di frontiera, e così la stessa voce
+viene tradotta allo stesso modo da chiunque lanci lo script.
+
+Se vuoi un modello diverso puoi scavalcarli:
+
+```sh
+uv run traduci.py --codex --modello gpt-5.5 --effort medium
+```
+
+`--effort` vale solo per Codex: Claude Code non ha un'opzione equivalente e
+l'argomento viene ignorato. I modelli che Codex accetta si elencano con
+`codex debug models`.
+
+La CLI viene eseguita in una directory vuota, non nel clone. Entrambe leggono i
+file di istruzioni della cartella da cui partono (`CLAUDE.md`, `AGENTS.md`) e il
+repository ne contiene uno: sono regole di sviluppo che non riguardano la
+traduzione e che finirebbero in ogni richiesta. Il testo da tradurre viaggia
+dentro la richiesta stessa, quindi alla CLI non serve vedere nessun file.
+
 ### 4. uv
 
 `uv` è lo strumento che scarica ed esegue lo script Python con tutte le sue
@@ -165,9 +188,9 @@ sopra. Poi lavorerà da solo:
 
 1. crea il tuo fork del repository e lo clona in `~/.wikipedia-in-italiano`;
 2. sceglie a caso un gruppo di voci ancora libero e lo prenota aprendo una issue;
-3. per ogni voce: la scarica da Wikipedia, la converte in markdown e la fa
-   tradurre subito dall'assistente AI;
-4. carica il lavoro sul tuo fork ogni 10 voci tradotte;
+3. scarica le voci da Wikipedia a gruppetti, le converte in markdown e le fa
+   tradurre dall'assistente AI un lotto per volta;
+4. carica il lavoro sul tuo fork alla fine di ogni lotto;
 5. alla fine apre una pull request e chiude la issue di prenotazione;
 6. ti propone di annunciare il contributo su LinkedIn e X. È facoltativo: se
    accetti, apre il browser con il testo del post già pronto, che puoi rivedere
@@ -178,9 +201,10 @@ Il processo è interattivo: lascia il terminale aperto mentre lavora.
 ### Se si interrompe
 
 Puoi chiudere tutto e rilanciare lo stesso comando più tardi. Il lavoro già
-fatto viene salvato su GitHub ogni 10 voci, quindi riprenderà da dove si era
-fermato senza ritradurre quello che è già pronto: riconosce il gruppo su cui
-stavi lavorando e continua con quello, senza prenderne uno nuovo.
+fatto viene salvato su GitHub alla fine di ogni lotto di traduzioni, quindi
+riprenderà da dove si era fermato senza ritradurre quello che è già pronto:
+riconosce il gruppo su cui stavi lavorando e continua con quello, senza
+prenderne uno nuovo.
 
 Se Wikipedia risponde che hai superato il limite di richieste (`429 Too Many
 Requests`), oppure Claude/Codex segnala che hai superato i limiti d'uso, lo
