@@ -17,6 +17,7 @@ nel formato con underscore accettato dall'endpoint.
 """
 import argparse
 import sys
+from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
@@ -28,7 +29,9 @@ USER_AGENT = "wikipedia-in-italiano/0.1 (https://github.com/OpenEmmaLab/wikipedi
 
 def fetch_html(title, lang="en"):
     """Scarica l'HTML renderizzato della voce. None se la voce non esiste."""
-    url = REST_URL.format(lang=lang, title=title)
+    # safe="" per codificare anche la slash: i titoli che la contengono
+    # (06/05, 0/1-polytope) verrebbero altrimenti spezzati nel path e darebbero 404.
+    url = REST_URL.format(lang=lang, title=quote(title, safe=""))
     response = requests.get(url, headers={"User-Agent": USER_AGENT})
     if response.status_code == 404:
         return None
