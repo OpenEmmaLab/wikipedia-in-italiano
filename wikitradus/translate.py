@@ -46,89 +46,103 @@ def _wiki_url(title, lang="en"):
     return f"https://{lang}.wikipedia.org/wiki/{quoted}"
 
 
-def extract_group(workdir, group, entries, lang="en"):
-    """Fase 1: estrae in markdown tutte le voci non ancora presenti.
+def _extract_one(destination, page_id, title, lang):
+    """Scarica una voce e la salva in markdown. None se non esiste più."""
+    path = destination / f"{page_id}.md"
+    if path.exists():
+        return path
+    try:
+        markdown = to_markdown(fetch_html(title, lang), lang)
+    except NotFound:
+        # La voce è stata cancellata o rinominata dopo la generazione dei
+        # batch: in entrambi i casi il titolo non risolve più e si salta.
+        return None
+    except Exception as exc:
+        print(f"  {title}: {exc}", flush=True)
+        return None
 
-    Le voci già su disco vengono saltate, così una ripresa non riscarica nulla.
+    header = (
+        f"# {title}\n\n"
+        f"*[Voce originale su Wikipedia]({_wiki_url(title, lang)})*\n\n"
+    )
+    path.write_text(header + markdown + "\n")
+    return path
+
+
+def _translate_one(path, assistant, workdir):
+    """Traduce un file sul posto. False se la CLI non ha prodotto nulla."""
+    before = path.read_text()
+    try:
+        answer = assistant.ask(
+            TRANSLATE_PROMPT.format(text=before), cwd=workdir.path
+        )
+    except Exception as exc:
+        print(f"  {path.name}: {exc}", flush=True)
+        return False
+
+    fenced = FENCE.match(answer.strip())
+    result = (fenced.group(1) if fenced else answer).strip()
+
+    # Se la risposta è vuota o identica all'originale la CLI non ha lavorato:
+    # la voce non conta come tradotta e verrà ripresa al rilancio.
+    if not result or result == before.strip():
+        print(f"  {path.name}: invariato", flush=True)
+        return False
+
+    path.write_text(result + "\n")
+    return True
+
+
+def process_group(workdir, group, entries, assistant, lang="en"):
+    """Estrae e traduce le voci una a una, alternando i due passi.
+
+    Scaricare tutto in blocco significa mandare a Wikipedia centinaia di
+    richieste ravvicinate, che finiscono per incontrare il rate limit
+    (`429 Too Many Requests`). Traducendo subito ogni voce appena scaricata, le
+    richieste si distanziano da sole: fra l'una e l'altra passano le decine di
+    secondi che la CLI impiega a tradurre.
     """
     destination = workdir.group_dir(group)
     destination.mkdir(parents=True, exist_ok=True)
-
-    pending = [
-        (page_id, title) for page_id, title in entries
-        if not (destination / f"{page_id}.md").exists()
-    ]
-    if not pending:
-        print(f"Le {len(entries)} voci del gruppo sono già estratte.")
-        return 0
-
-    extracted = skipped = 0
-    for index, (page_id, title) in enumerate(pending, 1):
-        try:
-            markdown = to_markdown(fetch_html(title, lang), lang)
-        except NotFound:
-            # La voce è stata cancellata o rinominata dopo la generazione dei
-            # batch: in entrambi i casi il titolo non risolve più e si salta.
-            skipped += 1
-            continue
-        except Exception as exc:
-            print(f"  errore su {title}: {exc}", flush=True)
-            skipped += 1
-            continue
-
-        header = f"# {title}\n\n*[Voce originale su Wikipedia]({_wiki_url(title, lang)})*\n\n"
-        (destination / f"{page_id}.md").write_text(header + markdown + "\n")
-        extracted += 1
-        if index % 50 == 0:
-            print(f"  {index}/{len(pending)} — estratte {extracted}", flush=True)
-        time.sleep(FETCH_PAUSE)
-
-    print(f"Estratte {extracted} voci, saltate {skipped}.")
-    return extracted
-
-
-def translate_group(workdir, group, assistant, fork):
-    """Fase 2: traduce le voci non ancora elencate in translated.txt."""
-    destination = workdir.group_dir(group)
     done = workdir.translated_ids(group)
-    pending = sorted(
-        path for path in destination.glob("*.md") if path.stem not in done
-    )
+
+    pending = [(pid, title) for pid, title in entries if pid not in done]
     if not pending:
-        print("Tutte le voci estratte sono già tradotte.")
+        print(f"Le {len(entries)} voci del gruppo sono già tradotte.")
         return 0
 
-    print(f"Traduco {len(pending)} voci con '{assistant.name}'…", flush=True)
-    translated = 0
-    for index, path in enumerate(pending, 1):
-        before = path.read_text()
-        try:
-            answer = assistant.ask(
-                TRANSLATE_PROMPT.format(text=before), cwd=workdir.path
-            )
-        except Exception as exc:
-            print(f"  [{index}/{len(pending)}] {path.name}: {exc}", flush=True)
+    print(
+        f"Elaboro {len(pending)} voci con '{assistant.name}': "
+        f"ognuna viene scaricata e subito tradotta.",
+        flush=True,
+    )
+    translated = skipped = 0
+    for index, (page_id, title) in enumerate(pending, 1):
+        progress = f"[{index}/{len(pending)}]"
+
+        path = _extract_one(destination, page_id, title, lang)
+        if path is None:
+            skipped += 1
+            print(f"  {progress} {title}: non disponibile", flush=True)
             continue
 
-        fenced = FENCE.match(answer.strip())
-        result = (fenced.group(1) if fenced else answer).strip()
-
-        # Se la risposta è vuota o identica all'originale la CLI non ha
-        # lavorato: la voce non conta come tradotta e verrà ripresa al rilancio.
-        if not result or result == before.strip():
-            print(f"  [{index}/{len(pending)}] {path.name}: invariato", flush=True)
+        if not _translate_one(path, assistant, workdir):
+            # L'originale resta su disco: al rilancio si riparte da lì senza
+            # riscaricarlo.
             continue
 
-        path.write_text(result + "\n")
-        workdir.mark_translated(group, path.stem)
+        workdir.mark_translated(group, page_id)
         translated += 1
-        print(f"  [{index}/{len(pending)}] {path.name} tradotta", flush=True)
+        print(f"  {progress} {title} tradotta", flush=True)
 
         if translated % COMMIT_EVERY == 0:
             workdir.commit_all(f"traduzioni: {group}, {translated} voci")
             workdir.push()
             print(f"  … {translated} voci pubblicate sul fork", flush=True)
 
+        time.sleep(FETCH_PAUSE)
+
     if workdir.commit_all(f"traduzioni: {group}, {translated} voci tradotte"):
         workdir.push()
+    print(f"Tradotte {translated} voci, saltate {skipped}.")
     return translated
