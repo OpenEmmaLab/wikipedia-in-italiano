@@ -50,6 +50,10 @@ class NotFound(Exception):
     """La voce non esiste più su Wikipedia."""
 
 
+class RateLimited(Exception):
+    """Wikipedia ha risposto che il limite di richieste è stato superato."""
+
+
 def _get(url):
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
@@ -58,6 +62,12 @@ def _get(url):
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             raise NotFound(url) from exc
+        if exc.code == 429:
+            retry_after = exc.headers.get("Retry-After")
+            message = url
+            if retry_after:
+                message = f"{url} (Retry-After: {retry_after})"
+            raise RateLimited(message) from exc
         raise
 
 

@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from wikitradus import repo
 from wikitradus.cli import PrerequisiteError, check_prerequisites
-from wikitradus.translate import process_group, read_group
+from wikitradus.translate import LimitReached, process_group, read_group
 
 DEFAULT_WORKDIR = Path.home() / ".wikipedia-in-italiano"
 POST_TEXT = "Ho contribuito a tradurre Wikipedia in italiano, il mio batch è {group}"
@@ -72,6 +72,18 @@ def share(group):
     print("Rivedi il testo nel browser prima di pubblicarlo.")
 
 
+def assistant_flag(value):
+    """Converte i flag --claude/--codex: 1 abilita, 0 disabilita."""
+    if isinstance(value, bool):
+        return value
+    value = value.lower()
+    if value in {"1", "true", "yes", "y", "si", "sì"}:
+        return True
+    if value in {"0", "false", "no", "n"}:
+        return False
+    raise argparse.ArgumentTypeError("usa 1/0, true/false oppure yes/no")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
@@ -86,11 +98,22 @@ def main():
     parser.add_argument(
         "--lingua", default="en", help="lingua di partenza (default: en)"
     )
+    parser.add_argument(
+        "--claude", nargs="?", const=True, default=True, type=assistant_flag,
+        help="abilita o disabilita Claude Code (default: 1; es. --claude 0)",
+    )
+    parser.add_argument(
+        "--codex", nargs="?", const=True, default=True, type=assistant_flag,
+        help="abilita o disabilita Codex (default: 1; es. --codex o --codex 0)",
+    )
     args = parser.parse_args()
 
     # 1. Prerequisiti: nessuna issue viene aperta prima che la CLI risponda.
     try:
-        assistant = check_prerequisites()
+        assistant = check_prerequisites({
+            "claude": args.claude,
+            "codex": args.codex,
+        })
     except PrerequisiteError as exc:
         print(f"\n{exc}", file=sys.stderr)
         return 1
@@ -120,7 +143,16 @@ def main():
 
     # 6-7. Ogni voce viene scaricata e subito tradotta, con translated.txt e
     # commit ogni 10 traduzioni.
-    process_group(workdir, group, entries, assistant, args.lingua)
+    try:
+        process_group(workdir, group, entries, assistant, args.lingua)
+    except LimitReached as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        print(
+            "Il gruppo resta sul branch corrente e verrà ripreso al prossimo "
+            "avvio; non apro la pull request e non chiudo la issue.",
+            file=sys.stderr,
+        )
+        return 1
 
     # 8. Chiusura: PR, issue, ritorno su main. L'ordine conta.
     translated = len(workdir.translated_ids(group))

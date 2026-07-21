@@ -4,7 +4,8 @@ import time
 import urllib.parse
 
 from . import repo
-from .extract import NotFound, fetch_html, to_markdown
+from .cli import UsageLimitError
+from .extract import NotFound, RateLimited, fetch_html, to_markdown
 
 # Pausa fra le richieste a Wikipedia, per non martellare i loro server.
 FETCH_PAUSE = 0.2
@@ -28,6 +29,10 @@ blocco di codice attorno al risultato.
 # La CLI può incorniciare la risposta in un blocco di codice nonostante la
 # richiesta contraria: lo si toglie prima di salvare.
 FENCE = re.compile(r"^```(?:markdown|md)?\n(.*)\n```$", re.DOTALL)
+
+
+class LimitReached(Exception):
+    """Il lavoro deve fermarsi perché un servizio ha segnalato limiti superati."""
 
 
 def read_group(path):
@@ -57,6 +62,11 @@ def _extract_one(destination, page_id, title, lang):
         # La voce è stata cancellata o rinominata dopo la generazione dei
         # batch: in entrambi i casi il titolo non risolve più e si salta.
         return None
+    except RateLimited as exc:
+        raise LimitReached(
+            "Wikipedia ha risposto '429 Too Many Requests'. "
+            "Ferma il lavoro e rilancialo più tardi."
+        ) from exc
     except Exception as exc:
         print(f"  {title}: {exc}", flush=True)
         return None
@@ -76,6 +86,11 @@ def _translate_one(path, assistant, workdir):
         answer = assistant.ask(
             TRANSLATE_PROMPT.format(text=before), cwd=workdir.path
         )
+    except UsageLimitError as exc:
+        raise LimitReached(
+            f"'{assistant.name}' segnala che sono stati superati i limiti "
+            "d'uso. Rilancia lo script quando il limite si azzera."
+        ) from exc
     except Exception as exc:
         print(f"  {path.name}: {exc}", flush=True)
         return False
@@ -120,13 +135,25 @@ def process_group(workdir, group, entries, assistant, lang="en"):
     for index, (page_id, title) in enumerate(pending, 1):
         progress = f"[{index}/{len(pending)}]"
 
-        path = _extract_one(destination, page_id, title, lang)
+        try:
+            path = _extract_one(destination, page_id, title, lang)
+        except LimitReached:
+            if workdir.commit_all(f"traduzioni: {group}, stop per limiti"):
+                workdir.push()
+            raise
         if path is None:
             skipped += 1
             print(f"  {progress} {title}: non disponibile", flush=True)
             continue
 
-        if not _translate_one(path, assistant, workdir):
+        try:
+            translated_one = _translate_one(path, assistant, workdir)
+        except LimitReached:
+            if workdir.commit_all(f"traduzioni: {group}, stop per limiti"):
+                workdir.push()
+            raise
+
+        if not translated_one:
             # L'originale resta su disco: al rilancio si riparte da lì senza
             # riscaricarlo.
             continue

@@ -79,10 +79,21 @@ averne installato **uno dei due**:
 - [Claude Code](https://claude.com/claude-code)
 - [Codex](https://developers.openai.com/codex/cli)
 
-Anche qui, se non hai ancora fatto il login, lo script apre il browser e ti
-chiede di incollare il codice di autenticazione. Prima di iniziare a lavorare fa
-una domanda di prova all'assistente: se non risponde, si ferma senza prenotare
-nessun gruppo.
+Prima di iniziare a lavorare lo script fa una domanda di prova all'assistente in
+modalità non interattiva. Se non risponde, avvia il flusso di autenticazione
+browser/device della CLI: `claude auth login` per Claude Code, oppure
+`codex login --device-auth` per Codex. Questo mostra un URL o apre il browser,
+ma non lancia la UI interattiva dell'assistente. Dopo l'autenticazione lo script
+riprova la domanda di prova; se ancora non riceve risposta, si ferma senza
+prenotare nessun gruppo.
+
+Se li hai installati entrambi, lo script prova prima Claude e poi Codex. Puoi
+scegliere esplicitamente quale usare con i flag `--claude` e `--codex`; il valore
+`1` abilita, `0` disabilita. Per esempio, per usare solo Codex:
+
+```sh
+uv run traduci.py --claude 0 --codex
+```
 
 ### 4. uv
 
@@ -143,7 +154,7 @@ Per fare una prova ci sono nove gruppi ridotti, da `test1` a `test9`, con una
 voce per `test1` fino a nove per `test9`:
 
 ```sh
-./traduci.py --group test1
+uv run traduci.py --group test1
 ```
 
 Questi gruppi fanno una piccola traduzione e generano una pull request (che però verrà scartata).
@@ -153,9 +164,9 @@ sopra. Poi lavorerà da solo:
 
 1. crea il tuo fork del repository e lo clona in `~/.wikipedia-in-italiano`;
 2. sceglie a caso un gruppo di voci ancora libero e lo prenota aprendo una issue;
-3. scarica tutte le voci del gruppo, le converte in markdown e le pubblica sul
-   tuo fork: a questo punto sono ancora in inglese;
-4. le fa tradurre una a una dall'assistente AI, caricandole ogni 10 voci;
+3. per ogni voce: la scarica da Wikipedia, la converte in markdown e la fa
+   tradurre subito dall'assistente AI;
+4. carica il lavoro sul tuo fork ogni 10 voci tradotte;
 5. alla fine apre una pull request e chiude la issue di prenotazione;
 6. ti propone di annunciare il contributo su LinkedIn e X. È facoltativo: se
    accetti, apre il browser con il testo del post già pronto, che puoi rivedere
@@ -169,6 +180,13 @@ Puoi chiudere tutto e rilanciare lo stesso comando più tardi. Il lavoro già
 fatto viene salvato su GitHub ogni 10 voci, quindi riprenderà da dove si era
 fermato senza ritradurre quello che è già pronto: riconosce il gruppo su cui
 stavi lavorando e continua con quello, senza prenderne uno nuovo.
+
+Se Wikipedia risponde che hai superato il limite di richieste (`429 Too Many
+Requests`), oppure Claude/Codex segnala che hai superato i limiti d'uso, lo
+script si ferma subito e ti avvisa. Prima di uscire salva e pubblica sul fork
+quello che era già stato prodotto; non apre la pull request e non chiude la issue
+del gruppo. Rilanciando lo stesso comando più tardi, riprende dal branch e dalla
+voce corretta.
 
 ## Come sono organizzate le voci
 

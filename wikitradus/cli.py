@@ -4,10 +4,16 @@ import subprocess
 import sys
 
 # Le due CLI supportate, con il modo di invocarle non interattivamente.
-ASSISTANTS = [
-    ("claude", lambda prompt: ["claude", "-p", prompt]),
-    ("codex", lambda prompt: ["codex", "exec", prompt]),
-]
+ASSISTANTS = {
+    "claude": {
+        "ask": lambda prompt: ["claude", "-p", prompt],
+        "auth": ["claude", "auth", "login"],
+    },
+    "codex": {
+        "ask": lambda prompt: ["codex", "exec", prompt],
+        "auth": ["codex", "login", "--device-auth"],
+    },
+}
 
 PROBE_PROMPT = "Rispondi esattamente OK"
 PROBE_TIMEOUT = 120
@@ -31,17 +37,42 @@ INSTALL_HINTS = {
         "url": "https://cli.github.com",
     },
     "claude": {
-        "cosa": "un assistente da riga di comando (claude oppure codex)",
+        "cosa": "l'assistente Claude da riga di comando",
         "Windows": "npm install -g @anthropic-ai/claude-code",
         "macOS": "npm install -g @anthropic-ai/claude-code",
         "Linux": "npm install -g @anthropic-ai/claude-code",
-        "url": "https://claude.com/claude-code  o  https://developers.openai.com/codex/cli",
+        "url": "https://claude.com/claude-code",
+    },
+    "codex": {
+        "cosa": "l'assistente Codex da riga di comando",
+        "Windows": "npm install -g @openai/codex",
+        "macOS": "npm install -g @openai/codex",
+        "Linux": "npm install -g @openai/codex",
+        "url": "https://developers.openai.com/codex/cli",
     },
 }
+
+LIMIT_MESSAGES = (
+    "rate limit",
+    "rate_limit",
+    "too many requests",
+    "quota",
+    "usage limit",
+    "usage_limit",
+    "credit balance",
+    "insufficient quota",
+    "limite d'uso",
+    "limiti d'uso",
+    "quota superata",
+)
 
 
 class PrerequisiteError(Exception):
     """Un prerequisito non è soddisfatto: lo script non può proseguire."""
+
+
+class UsageLimitError(RuntimeError):
+    """La CLI ha segnalato che sono stati superati i limiti d'uso."""
 
 
 def _run(command, timeout):
@@ -53,15 +84,23 @@ def _run(command, timeout):
 class Assistant:
     """La CLI che esegue le traduzioni: `claude` oppure `codex`."""
 
-    def __init__(self, name, build_command):
+    def __init__(self, name, config):
         self.name = name
-        self._build = build_command
+        self._build = config["ask"]
+        self._auth = config["auth"]
 
     def ask(self, prompt, timeout=TRANSLATE_TIMEOUT, cwd=None):
         result = subprocess.run(
             self._build(prompt), capture_output=True, text=True,
             timeout=timeout, cwd=cwd, check=False,
         )
+        diagnostic = result.stderr
+        if result.returncode != 0:
+            diagnostic = "\n".join(
+                part for part in (result.stdout, result.stderr) if part
+            )
+        if _looks_like_usage_limit(diagnostic):
+            raise UsageLimitError(diagnostic.strip())
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "la CLI ha fallito")
         return result.stdout.strip()
@@ -80,6 +119,10 @@ class Assistant:
             return False
         return any(line.strip().upper() == "OK" for line in answer.splitlines())
 
+    def authenticate(self):
+        """Avvia solo il flusso auth browser/device, senza aprire la UI."""
+        subprocess.run(self._auth, check=False)
+
 
 def _install_hint(name):
     """Come installare un comando mancante, sui tre sistemi operativi."""
@@ -92,15 +135,33 @@ def _install_hint(name):
     return "\n".join(lines)
 
 
-def check_commands():
+def _looks_like_usage_limit(text):
+    lowered = text.lower()
+    return any(message in lowered for message in LIMIT_MESSAGES)
+
+
+def _enabled_assistant_names(selection=None):
+    if selection is None:
+        return list(ASSISTANTS)
+    return [name for name in ASSISTANTS if selection.get(name, True)]
+
+
+def check_commands(selection=None):
     """Verifica che i comandi necessari siano nel PATH, prima di ogni altra cosa.
 
     Un prerequisito mancante va scoperto subito e tutto insieme: scoprirne uno
     per volta, dopo minuti di lavoro, è il modo peggiore di fallire.
     """
+    enabled = _enabled_assistant_names(selection)
+    if not enabled:
+        raise PrerequisiteError(
+            "Devi abilitare almeno un assistente: usa --claude o --codex."
+        )
+
     missing = [name for name in ("git", "gh") if not shutil.which(name)]
-    if not any(shutil.which(name) for name, _ in ASSISTANTS):
-        missing.append("claude")
+    available_assistants = [name for name in enabled if shutil.which(name)]
+    if not available_assistants:
+        missing.extend(enabled)
 
     if not missing:
         return
@@ -114,15 +175,15 @@ def check_commands():
     raise PrerequisiteError("\n".join(message))
 
 
-def find_assistant():
+def find_assistant(selection=None):
     """Trova claude o codex nel PATH e ne verifica l'autenticazione."""
+    enabled = _enabled_assistant_names(selection)
     available = [
-        Assistant(name, build) for name, build in ASSISTANTS
-        if shutil.which(name)
+        Assistant(name, ASSISTANTS[name]) for name in enabled if shutil.which(name)
     ]
     if not available:
         raise PrerequisiteError(
-            "Serve 'claude' oppure 'codex'.\n" + _install_hint("claude")
+            "Serve una CLI abilitata fra 'claude' e 'codex'."
         )
 
     for assistant in available:
@@ -130,17 +191,19 @@ def find_assistant():
         if assistant.probe():
             print(f"  '{assistant.name}' pronto.")
             return assistant
-        print(f"  '{assistant.name}' non risponde: provo ad autenticarlo.")
-        # Il login apre il browser e chiede di incollare un codice: è
-        # interattivo, quindi eredita il terminale invece di catturare l'output.
-        subprocess.run([assistant.name, "login"], check=False)
+        print(
+            f"  '{assistant.name}' non risponde: avvio il flusso di "
+            "autenticazione browser/device.",
+            flush=True,
+        )
+        assistant.authenticate()
         if assistant.probe():
             print(f"  '{assistant.name}' pronto.")
             return assistant
 
     raise PrerequisiteError(
         "Nessuna CLI risponde all'interrogazione di prova.\n"
-        "Autenticati manualmente (es. 'claude login') e rilancia: senza un\n"
+        "Completa l'autenticazione browser/device e rilancia: senza un\n"
         "assistente funzionante non ha senso prenotare un gruppo di voci."
     )
 
@@ -162,14 +225,14 @@ def ensure_github_login():
         )
 
 
-def check_prerequisites():
+def check_prerequisites(selection=None):
     """Verifica tutto ciò che serve prima di prenotare un gruppo.
 
     Prima l'esistenza dei comandi, tutti insieme, poi le autenticazioni: un
     programma mancante si scopre in un istante, autenticarsi richiede il
     browser.
     """
-    check_commands()
-    assistant = find_assistant()
+    check_commands(selection)
+    assistant = find_assistant(selection)
     ensure_github_login()
     return assistant
