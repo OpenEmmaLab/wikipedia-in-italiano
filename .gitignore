@@ -8,3 +8,4 @@ __pycache__/
 
 # Output generato: centinaia di MB, si rigenera dai dump
 batches/
+groups/

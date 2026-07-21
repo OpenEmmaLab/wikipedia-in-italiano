@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Test per create-wiki-batches.py. Eseguire con: python3 -m unittest -v"""
+"""Test per create-wiki-batches.py e grouping.py.
+Eseguire con: python3 -m unittest -v"""
 
 import gzip
 import importlib.util
@@ -9,6 +10,7 @@ import tempfile
 import unittest
 import warnings
 
+import grouping
 from wikibatches import buckets, state
 from wikibatches.sqldump import iter_rows
 
@@ -584,6 +586,176 @@ class TestStagingWriter(unittest.TestCase):
             return []
         with open(path, encoding="utf-8") as fh:
             return [r for r in fh.read().splitlines() if r]
+
+
+class TestGrouping(unittest.TestCase):
+    """Accorpamento dei batch in groups/."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.batches = os.path.join(self.root, "batches")
+        self.out = os.path.join(self.root, "groups")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _batch(self, rel, righe):
+        """Crea un batch con `righe` voci, o con contenuto grezzo se bytes."""
+        d = os.path.join(self.batches, *rel.split("/"))
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, "list.txt")
+        if isinstance(righe, bytes):
+            with open(path, "wb") as fh:
+                fh.write(righe)
+            return
+        with open(path, "w", encoding="utf-8") as fh:
+            for i in righe:
+                fh.write("%d\tVoce_%05d\n" % (i, i))
+
+    def _gruppi(self):
+        return sorted(
+            f for f in os.listdir(self.out)
+            if f.endswith(".txt") and f != grouping.INDEX_NAME
+        )
+
+    def _righe(self, name):
+        with open(os.path.join(self.out, name), encoding="utf-8") as fh:
+            return [r for r in fh.read().splitlines() if r]
+
+    def test_accorpa_finche_entra(self):
+        # Quattro batch piccoli stanno tutti in un gruppo solo.
+        for n, rel in enumerate(["a/a", "a/b", "b/a", "c/c"]):
+            self._batch(rel, range(n * 10, n * 10 + 10))
+
+        grouping.build(self.batches, self.out, max_size=1000)
+
+        self.assertEqual(len(self._gruppi()), 1)
+        self.assertEqual(len(self._righe(self._gruppi()[0])), 40)
+
+    def test_chiude_il_gruppo_alla_soglia(self):
+        # Due batch da 60: con soglia 100 non possono stare insieme.
+        self._batch("a/a", range(60))
+        self._batch("a/b", range(100, 160))
+
+        grouping.build(self.batches, self.out, max_size=100)
+
+        self.assertEqual(len(self._gruppi()), 2)
+        for name in self._gruppi():
+            self.assertLess(len(self._righe(name)), 100)
+
+    def test_nessun_gruppo_raggiunge_la_soglia(self):
+        for i in range(40):
+            self._batch("%02d" % i, range(i * 100, i * 100 + 30))
+
+        grouping.build(self.batches, self.out, max_size=100)
+
+        for name in self._gruppi():
+            self.assertLess(len(self._righe(name)), 100, name)
+
+    def test_conservazione_delle_voci(self):
+        attese = []
+        for i in range(30):
+            righe = list(range(i * 50, i * 50 + 20))
+            attese.extend("%d\tVoce_%05d" % (n, n) for n in righe)
+            self._batch("b%02d" % i, righe)
+
+        grouping.build(self.batches, self.out, max_size=100)
+
+        ottenute = []
+        for name in self._gruppi():
+            ottenute.extend(self._righe(name))
+        self.assertEqual(sorted(ottenute), sorted(attese))
+        self.assertEqual(len(ottenute), len(set(ottenute)), "voci duplicate")
+
+    def test_giunzione_senza_newline_finale(self):
+        # Regressione: senza il \n aggiunto, '2\tDue' e '3\tTre' si
+        # salderebbero in '2\tDue3\tTre' -- una riga che ha comunque un TAB
+        # e quindi passerebbe un controllo di formato superficiale.
+        self._batch("a", b"1\tUno\n2\tDue")
+        self._batch("b", b"3\tTre\n")
+
+        grouping.build(self.batches, self.out, max_size=1000)
+
+        righe = self._righe(self._gruppi()[0])
+        self.assertEqual(righe, ["1\tUno", "2\tDue", "3\tTre"])
+        for riga in righe:
+            self.assertEqual(riga.count("\t"), 1, riga)
+
+    def test_ogni_gruppo_termina_con_newline(self):
+        self._batch("a", b"1\tUno\n2\tDue")
+        self._batch("b", b"3\tTre")
+
+        grouping.build(self.batches, self.out, max_size=1000)
+
+        for name in self._gruppi():
+            with open(os.path.join(self.out, name), "rb") as fh:
+                self.assertTrue(fh.read().endswith(b"\n"), name)
+
+    def test_batch_vuoto_non_rompe_il_conteggio(self):
+        self._batch("a", range(10))
+        self._batch("b", b"")
+        self._batch("c", range(100, 110))
+
+        grouping.build(self.batches, self.out, max_size=1000)
+
+        self.assertEqual(len(self._righe(self._gruppi()[0])), 20)
+
+    def test_nome_col_prefisso_del_primo(self):
+        self._batch("l/i/s", range(10))
+
+        grouping.build(self.batches, self.out, max_size=1000)
+
+        # Percorso del primo batch, senza separatori.
+        self.assertEqual(self._gruppi(), ["1-lis.txt"])
+
+    def test_indice_elenca_esattamente_i_gruppi(self):
+        for i in range(50):
+            self._batch("b%02d" % i, range(i * 50, i * 50 + 30))
+
+        grouping.build(self.batches, self.out, max_size=100)
+
+        with open(os.path.join(self.out, grouping.INDEX_NAME), encoding="utf-8") as fh:
+            elencati = [r for r in fh.read().splitlines() if r]
+        self.assertEqual(sorted(elencati), self._gruppi())
+
+    def test_out_cancellato_prima_di_ricominciare(self):
+        self._batch("a", range(10))
+        os.makedirs(self.out, exist_ok=True)
+        intruso = os.path.join(self.out, "9999-vecchio.txt")
+        with open(intruso, "w", encoding="utf-8") as fh:
+            fh.write("1\tResiduo\n")
+
+        grouping.build(self.batches, self.out, max_size=1000)
+
+        self.assertFalse(os.path.exists(intruso), "residuo di un run precedente")
+
+    def test_ripetibile_byte_per_byte(self):
+        for i in range(30):
+            self._batch("b%02d" % i, range(i * 50, i * 50 + 20))
+
+        grouping.build(self.batches, self.out, max_size=100)
+        primo = {n: open(os.path.join(self.out, n), "rb").read()
+                 for n in os.listdir(self.out)}
+
+        grouping.build(self.batches, self.out, max_size=100)
+        secondo = {n: open(os.path.join(self.out, n), "rb").read()
+                   for n in os.listdir(self.out)}
+
+        self.assertEqual(primo, secondo)
+
+    def test_batches_non_viene_modificato(self):
+        self._batch("a", range(10))
+        prima = open(os.path.join(self.batches, "a", "list.txt"), "rb").read()
+
+        grouping.build(self.batches, self.out, max_size=1000)
+
+        dopo = open(os.path.join(self.batches, "a", "list.txt"), "rb").read()
+        self.assertEqual(prima, dopo)
+
+    def test_albero_vuoto_e_un_errore(self):
+        os.makedirs(self.batches, exist_ok=True)
+        with self.assertRaises(ValueError):
+            grouping.build(self.batches, self.out)
 
 
 if __name__ == "__main__":
