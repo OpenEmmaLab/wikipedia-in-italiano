@@ -84,6 +84,20 @@ def assistant_flag(value):
     raise argparse.ArgumentTypeError("usa 1/0, true/false oppure yes/no")
 
 
+def assistant_selection(args):
+    """Se l'utente nomina una CLI, usa solo le CLI nominate e abilitate."""
+    mentioned = {
+        "claude": args.claude is not None,
+        "codex": args.codex is not None,
+    }
+    if any(mentioned.values()):
+        return {
+            "claude": mentioned["claude"] and args.claude,
+            "codex": mentioned["codex"] and args.codex,
+        }
+    return {"claude": True, "codex": True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
@@ -99,21 +113,18 @@ def main():
         "--lingua", default="en", help="lingua di partenza (default: en)"
     )
     parser.add_argument(
-        "--claude", nargs="?", const=True, default=True, type=assistant_flag,
-        help="abilita o disabilita Claude Code (default: 1; es. --claude 0)",
+        "--claude", nargs="?", const=True, default=None, type=assistant_flag,
+        help="usa Claude Code, o disabilitalo con --claude 0",
     )
     parser.add_argument(
-        "--codex", nargs="?", const=True, default=True, type=assistant_flag,
-        help="abilita o disabilita Codex (default: 1; es. --codex o --codex 0)",
+        "--codex", nargs="?", const=True, default=None, type=assistant_flag,
+        help="usa Codex, o disabilitalo con --codex 0",
     )
     args = parser.parse_args()
 
     # 1. Prerequisiti: nessuna issue viene aperta prima che la CLI risponda.
     try:
-        assistant = check_prerequisites({
-            "claude": args.claude,
-            "codex": args.codex,
-        })
+        assistant = check_prerequisites(assistant_selection(args))
     except PrerequisiteError as exc:
         print(f"\n{exc}", file=sys.stderr)
         return 1

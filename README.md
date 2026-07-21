@@ -87,12 +87,13 @@ ma non lancia la UI interattiva dell'assistente. Dopo l'autenticazione lo script
 riprova la domanda di prova; se ancora non riceve risposta, si ferma senza
 prenotare nessun gruppo.
 
-Se li hai installati entrambi, lo script prova prima Claude e poi Codex. Puoi
-scegliere esplicitamente quale usare con i flag `--claude` e `--codex`; il valore
-`1` abilita, `0` disabilita. Per esempio, per usare solo Codex:
+Se li hai installati entrambi, senza flag lo script prova prima Claude e poi
+Codex. Se specifichi una CLI, usa solo quella: `--codex` non prova Claude, e
+`--claude` non prova Codex. Puoi anche passare `0` per disabilitare
+esplicitamente una CLI. Per esempio, per usare solo Codex:
 
 ```sh
-uv run traduci.py --claude 0 --codex
+uv run traduci.py --codex
 ```
 
 ### 4. uv
