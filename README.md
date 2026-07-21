@@ -125,24 +125,28 @@ Apri il terminale (su Windows: PowerShell) ed esegui:
 ```sh
 git clone https://github.com/OpenEmmaLab/wikipedia-in-italiano.git
 cd wikipedia-in-italiano
-./traduci.py
+uv run traduci.py
 ```
 
 `uv` scarica da solo le librerie che servono: non devi installare nulla a mano.
 
-Se preferisci lavorare su un gruppo preciso invece che su uno scelto a caso:
-
-```sh
-./traduci.py --group 0001-0
-```
-
+Il traduttore sceglie un gruppo per te e inizia a lavorare.
 Un gruppo vero contiene circa mille voci e la traduzione richiede parecchie ore.
+
+Puoi interromperla e riprenderla in qualunque momento.
+Una volta completata, viene generata un contributo (una pull request).
+Verrà fatta una verifica manuale e poi accettata.
+
+Una volta completato un gruppo puoi rieseguire lo script per tradurne un altro.
+
 Per fare una prova ci sono nove gruppi ridotti, da `test1` a `test9`, con una
 voce per `test1` fino a nove per `test9`:
 
 ```sh
 ./traduci.py --group test1
 ```
+
+Questi gruppi fanno una piccola traduzione e generano una pull request (che però verrà scartata).
 
 Al primo avvio lo script ti guiderà attraverso le autenticazioni descritte
 sopra. Poi lavorerà da solo:
@@ -178,20 +182,3 @@ stavi lavorando e continua con quello, senza prenderne uno nuovo.
 - `traduzioni/<nome>/translated.txt` — l'elenco delle voci già tradotte, un
   identificativo per riga. È quello che permette allo script di riprendere il
   lavoro senza rifare quanto è già pronto.
-
-## Il codice
-
-- [`traduci.py`](traduci.py) — lo script da lanciare, con il flusso completo.
-- [`wikitradus/extract.py`](wikitradus/extract.py) — scarica una voce da
-  Wikipedia e la converte in markdown, scartando quel che non è prosa
-  dell'articolo (infobox, avvisi, navigazione, bibliografia, immagini).
-- [`wikitradus/translate.py`](wikitradus/translate.py) — le due fasi:
-  estrazione di tutte le voci del gruppo, poi traduzione una a una.
-- [`wikitradus/cli.py`](wikitradus/cli.py) — verifica che `claude` o `codex`
-  rispondano davvero, e che tu sia autenticato su GitHub.
-- [`wikitradus/repo.py`](wikitradus/repo.py) — fork, clone, branch, issue e
-  pull request.
-
-Gli script [`create-wiki-batches.py`](create-wiki-batches.py) e
-[`grouping.py`](grouping.py) servono a rigenerare i gruppi dai dump di Wikipedia
-e non sono necessari per contribuire alle traduzioni.
