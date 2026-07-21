@@ -1,0 +1,10 @@
+__pycache__/
+.vscode/
+.DS_Store
+
+# Dump di Wikipedia: 2,7 GB, si riscaricano da
+# https://dumps.wikimedia.org/enwiki/latest/
+*.sql.gz
+
+# Output generato: centinaia di MB, si rigenera dai dump
+batches/
